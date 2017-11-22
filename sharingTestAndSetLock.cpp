@@ -37,7 +37,7 @@
 // NB: paste into Excel using paste "Use Text Import Wizard" option and select "/" as the delimiter
 //
 
-#include "stdio.h"                                // pre-compiled headers
+#include "stdio.h"                             // pre-compiled headers
 #include <iostream>                             // cout
 #include <iomanip>                              // setprecision
 #include "helper.h"                             //
@@ -126,11 +126,7 @@ UINT64 tstart;                                  // start of test in ms
 int sharing;                                    // % sharing
 int lineSz;                                     // cache line size
 int maxThread;                                  // max # of threads
-
-int number[16];				//for bakery
-int choosing[16];
-	
-
+volatile long lock =0;
 THREADH *threadH;                               // thread handles
 UINT64 *ops;                                    // for ops per thread
 
@@ -242,10 +238,10 @@ void saveCounters()
 //
 WORKER worker(void *vthread)
 {
-    
     int thread = (int)((size_t) vthread);
+
     UINT64 n = 0;
-    choosing[thread] = 1; 			//bakery
+
     volatile VINT *gt = GINDX(thread);
     volatile VINT *gs = GINDX(maxThread);
 
@@ -255,22 +251,12 @@ WORKER worker(void *vthread)
     UINT64 nabort = 0;
 #endif
 
+    while (InterlockedExchange(&lock, 1)) // try for lock
+    while (lock == 1) // wait until lock free
+    _mm_pause(); 
+    
     runThreadOnCPU(thread % ncpu);
-    
-    int max = 0;			//..
-    for (int i = 0; i < 16; i++) {      //...
-	if(number[i] > max){		//.... Bakery, assumes maxThread = 16
-		max = number[i];	//....
-	} 				//...
-    }					//..
-    
-    number[thread] = max + 1;												//..
-    choosing[thread] = 0;												//...
-    for (int j = 0; j < 16; j++) { 											//.... Bakery, assumes maxThread = 16
-	while (choosing[j]); // wait while thread j choosing								//....
-	while (number[j] && ((number[j] < number[thread]) || ((number[j] == number[thread]) && (j < thread))));		//...
-    }															//..
-    
+
     while (1) {
 
         //
@@ -280,7 +266,7 @@ WORKER worker(void *vthread)
 
             switch (sharing) {
             case 0:
-		
+
                 INC(gt);
                 INC(gt);
                 INC(gt);
@@ -330,7 +316,7 @@ WORKER worker(void *vthread)
 #if OPTYP == 3
     aborts[thread] = nabort;
 #endif
-    number[thread]=0;	// Bakery
+    lock=0;
     return 0;
 
 }
@@ -485,7 +471,7 @@ int main()
 #endif
 
     //
-    // run tests!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // run tests
     //
     UINT64 ops1 = 1;
 
@@ -542,8 +528,8 @@ int main()
             r[indx].nt = nt;
             r[indx].rt = rt;
 
-            cout << setw(6) << sharing << "%"; 			
-            cout << setw(4) << nt;				
+            cout << setw(6) << sharing << "%";
+            cout << setw(4) << nt;
             cout << setw(6) << fixed << setprecision(2) << (double) rt / 1000;
             cout << setw(16) << r[indx].ops;
             cout << setw(6) << fixed << setprecision(2) << (double) r[indx].ops / ops1;
@@ -654,4 +640,3 @@ int main()
 }
 
 // eof
-
