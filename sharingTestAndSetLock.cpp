@@ -565,7 +565,14 @@ int main()
     cout << "/aborts";
 #endif
     cout << endl;
+    ofstream myfile;
+    myfile.open ("testSetIncr.csv");
     for (UINT i = 0; i < indx; i++) {
+	//to csv code
+	myfile << r[i].incs;
+	myfile << ",";
+	myfile << r[i].nt;
+	myfile << std::endl;
         cout << r[i].sharing << "/"  << r[i].nt << "/" << r[i].rt << "/"  << r[i].ops << "/" << r[i].incs;
 #if OPTYP == 3
         cout << "/" << r[i].aborts;
@@ -573,6 +580,7 @@ int main()
         cout << endl;
     }
     cout << endl;
+    myfile.close();
 
 #ifdef USEPMS
 

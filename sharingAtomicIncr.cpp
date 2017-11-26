@@ -38,7 +38,8 @@
 //
 
 #include "stdio.h"                             // pre-compiled headers
-#include <iostream>                             // cout
+#include <iostream> 
+#include <fstream>                            // cout
 #include <iomanip>                              // setprecision
 #include "helper.h"                             //
 using namespace std;                            // cout
@@ -559,13 +560,21 @@ int main()
     cout << "/aborts";
 #endif
     cout << endl;
+    ofstream myfile;
+    myfile.open ("atomIncr.csv");
     for (UINT i = 0; i < indx; i++) {
+	//to csv code
+	myfile << r[i].incs;
+	myfile << ",";
+	myfile << r[i].nt;
+	myfile << std::endl;
         cout << r[i].sharing << "/"  << r[i].nt << "/" << r[i].rt << "/"  << r[i].ops << "/" << r[i].incs;
 #if OPTYP == 3
         cout << "/" << r[i].aborts;
 #endif
         cout << endl;
     }
+    myfile.close();
     cout << endl;
 
 #ifdef USEPMS
