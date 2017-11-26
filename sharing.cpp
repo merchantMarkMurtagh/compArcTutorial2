@@ -255,7 +255,7 @@ WORKER worker(void *vthread)
     UINT64 nabort = 0;
 #endif
 
-    runThreadOnCPU(thread % ncpu);
+    //runThreadOnCPU(thread % ncpu);
     
     int max = 0;			//..
     for (int i = 0; i < 16; i++) {      //...

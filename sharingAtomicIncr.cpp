@@ -249,10 +249,6 @@ WORKER worker(void *vthread)
 #elif OPTYP == 3
     UINT64 nabort = 0;
 #endif
-
-    while (InterlockedExchange(&lock, 1)) // try for lock
-    while (lock == 1) // wait until lock free
-    _mm_pause(); 
     
     //runThreadOnCPU(thread % ncpu);
 
@@ -265,39 +261,38 @@ WORKER worker(void *vthread)
 
             switch (sharing) {
             case 0:
-
-                INC(gt);
-                INC(gt);
-                INC(gt);
-                INC(gt);
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
                 break;
 
             case 25:
-                INC(gt);
-                INC(gt);
-                INC(gt);
-                INC(gs);
+                InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gs);
                 break;
 
             case 50:
-                INC(gt);
-                INC(gs);
-                INC(gt);
-                INC(gs);
+                InterlockedIncrement(gt); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gs);
                 break;
 
             case 75:
-                INC(gt);
-                INC(gs);
-                INC(gs);
-                INC(gs);
+               	InterlockedIncrement(gt); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs);
                 break;
 
             case 100:
-                INC(gs);
-                INC(gs);
-                INC(gs);
-                INC(gs);
+                InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs);
 
             }
         }
@@ -315,7 +310,6 @@ WORKER worker(void *vthread)
 #if OPTYP == 3
     aborts[thread] = nabort;
 #endif
-    lock=0;
     return 0;
 
 }

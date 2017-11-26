@@ -41,6 +41,44 @@
 #include <iostream>                             // cout
 #include <iomanip>                              // setprecision
 #include "helper.h"                             //
+
+
+class ALIGNEDMA {
+public:
+void* operator new(size_t); // override new
+void operator delete(void*); // override delete
+};
+
+class QNode : public ALIGNEDMA {
+public:
+volatile int waiting;
+volatile QNode *next;
+};
+
+
+
+void acquire(QNode **lock) {
+	volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
+	qn->next = NULL;
+	volatile QNode *pred = (QNode*) InterlockedExchangePointer((PVOID*) lock, (PVOID) qn);
+	if (pred == NULL)
+		return; // have lock
+	qn->waiting = 1;
+	pred->next = qn;
+	while (qn->waiting);
+}
+
+void release(QNode **lock) {
+	volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
+	volatile QNode *succ;
+	if (!(succ = qn->next)) {
+		if (InterlockedCompareExchangePointer((PVOID*)lock, NULL, (PVOID) qn) == qn)
+			return;
+		while ((succ = qn->next) == NULL); // changed from do … while()
+	}
+	succ->waiting = 0;
+}
+
 using namespace std;                            // cout
 
 #define K           1024                        //
@@ -125,7 +163,7 @@ UINT64 tstart;                                  // start of test in ms
 int sharing;                                    // % sharing
 int lineSz;                                     // cache line size
 int maxThread;                                  // max # of threads
-volatile long lock =0;
+
 THREADH *threadH;                               // thread handles
 UINT64 *ops;                                    // for ops per thread
 
@@ -250,11 +288,11 @@ WORKER worker(void *vthread)
     UINT64 nabort = 0;
 #endif
 
-    while (InterlockedExchange(&lock, 1)) // try for lock
-    while (lock == 1) // wait until lock free
-    _mm_pause(); 
-    
     //runThreadOnCPU(thread % ncpu);
+   
+   DWORD tlsIndex = TlsAlloc();
+   QNode *qn = new QNode(); // at start of worker function
+   aquire(*qn);
 
     while (1) {
 
@@ -315,7 +353,7 @@ WORKER worker(void *vthread)
 #if OPTYP == 3
     aborts[thread] = nabort;
 #endif
-    lock=0;
+    release(*qn);
     return 0;
 
 }
