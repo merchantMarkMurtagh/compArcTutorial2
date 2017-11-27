@@ -21,7 +21,7 @@
 #include "stdio.h"            // pre-compiled headers
 #include <iomanip>          // {joj 27/5/14}
 #include <locale>           // {joj 7/6/14}
-
+#include "windows.h"
 #ifdef WIN32
 #include <intrin.h>         // intrinsics
 #elif __linux__
@@ -259,6 +259,13 @@ extern void writePERFEVTSEL(int, int, UINT64);
 
 extern UINT64 readPMC(int, int);
 extern void writePMC(int, int, UINT64);
+
+class helper
+{
+public:
+	helper();
+	~helper();
+};
 
 // eof
 

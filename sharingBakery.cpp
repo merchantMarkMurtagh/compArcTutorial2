@@ -37,8 +37,9 @@
 // NB: paste into Excel using paste "Use Text Import Wizard" option and select "/" as the delimiter
 //
 
-#include "stdio.h"                                // pre-compiled headers
-#include <iostream>                             // cout
+#include "stdio.h"                             // pre-compiled headers
+#include <iostream> 
+#include <fstream>                            // cout
 #include <iomanip>                              // setprecision
 #include "helper.h"                             //
 using namespace std;                            // cout
@@ -73,36 +74,14 @@ using namespace std;                            // cout
 // 1:InterlockedIncrement
 // 2:InterlockedCompareExchange
 // 3:RTM (restricted transactional memory)
-// 4:Bakery
-// 5.Test and set
-// 6. MCS
-
-//Bakery
-#pragma region BakeryLock
-/* bakery lock */
-int number[16];
-int choosing[16];
-int p_id;
-#pragma endregion BakeryLock
-
-//Test and Sets
-#pragma region TestAndTestAndSet
-volatile long long lock = 0;
-#pragma endregion TestAndTestAndSet 
-
-
 //
 
-
-#define OPTYP       4                          // set op type
-
-
+#define OPTYP       0                           // set op type
 
 #if OPTYP == 0
 
 #define OPSTR       "inc"
 #define INC(g)      (*g)++;
-
 
 #elif OPTYP == 1
 
@@ -141,89 +120,13 @@ volatile long long lock = 0;
                             InterlockedIncrement64((volatile LONG64*)g);                        \
                         }                                                                       \
                     }
-
-#elif OPTYP == 4
-#define OPSTR       "BakeryLock"
-#define INC(g)      aquire(p_ID);
-                    (*g)++;
-                    release_lock(p_ID);
-
-inline void aquire(int pid){
-
-    choosing[pid] = 1;
-     _mm_mfence(); 
-    int max = 0;           
-    for (int i = 0; i < 16; i++) {     
-        if(number[i] > max){
-           
-            max = number[i];    
-        }            
-    }                   
-    
-    number[pid] = max + 1;                                               
-    choosing[pid] = 0;  
-    _mm_mfence();                                             
-    for (int j = 0; j < 16; j++) {                                          
-        while (choosing[j]);                              
-        while (number[j] && ((number[j] < number[pid]) || ((number[j] == number[pid]) && (j < pid))));     
-    }                                                           
-}
-
-inline void release_lock(int pid){
-    number[pid]=0; 
-}
-
-
-#elif OPTYP == 5
-
-#ifdef COUNTER64
-#define OPSTR       "TesAndSetLock"
-#define INC(g)     while (InterlockedExchange(&lock, 1)) // try for lock
-                        while (lock == 1) // wait until lock free
-                            _mm_pause(); 
-                    (*g)++;
-                    lock = 0;
-
-#elif OPTYP == 6
-#define OPSTR       "MCS"
-#define INC(g)      aquire(&MClock);
-                    (*g)++;
-                    release(&MCLock);
-
-
-
-void acquire(QNode **lock) {
-    volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
-    qn->next = NULL;
-    volatile QNode *pred = (QNode*) InterlockedExchangePointer((PVOID*) lock, (PVOID) qn);
-    if (pred == NULL)
-        return; // have lock
-    qn->waiting = 1;
-    pred->next = qn;
-    while (qn->waiting);
-}
-
-void release(QNode **lock) {
-    volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
-    volatile QNode *succ;
-    if (!(succ = qn->next)) {
-        if (InterlockedCompareExchangePointer((PVOID*)lock, NULL, (PVOID) qn) == qn)
-            return;
-        while ((succ = qn->next) == NULL); // changed from do … while()
-    }
-    succ->waiting = 0;
-}
-
-
-#endif
 #endif
 
 UINT64 tstart;                                  // start of test in ms
 int sharing;                                    // % sharing
 int lineSz;                                     // cache line size
 int maxThread;                                  // max # of threads
-	
-int p_ID;
+volatile long lock =0;
 THREADH *threadH;                               // thread handles
 UINT64 *ops;                                    // for ops per thread
 
@@ -335,10 +238,10 @@ void saveCounters()
 //
 WORKER worker(void *vthread)
 {
-    
     int thread = (int)((size_t) vthread);
+
     UINT64 n = 0;
-   	
+
     volatile VINT *gt = GINDX(thread);
     volatile VINT *gs = GINDX(maxThread);
 
@@ -347,10 +250,10 @@ WORKER worker(void *vthread)
 #elif OPTYP == 3
     UINT64 nabort = 0;
 #endif
-
-    //runThreadOnCPU(thread % ncpu);
     
-   while (1) {
+    //runThreadOnCPU(thread % ncpu);
+
+    while (1) {
 
         //
         // do some work
@@ -359,38 +262,38 @@ WORKER worker(void *vthread)
 
             switch (sharing) {
             case 0:
-                INC(gt);
-                INC(gt);
-                INC(gt);
-                INC(gt);
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
                 break;
 
             case 25:
-                INC(gt);
-                INC(gt);
-                INC(gt);
-                INC(gs);
+                InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gs);
                 break;
 
             case 50:
-                INC(gt);
-                INC(gs);
-                INC(gt);
-                INC(gs);
+                InterlockedIncrement(gt); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gt); 
+		InterlockedIncrement(gs);
                 break;
 
             case 75:
-                INC(gt);
-                INC(gs);
-                INC(gs);
-                INC(gs);
+               	InterlockedIncrement(gt); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs);
                 break;
 
             case 100:
-                INC(gs);
-                INC(gs);
-                INC(gs);
-                INC(gs);
+                InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs); 
+		InterlockedIncrement(gs);
 
             }
         }
@@ -408,7 +311,6 @@ WORKER worker(void *vthread)
 #if OPTYP == 3
     aborts[thread] = nabort;
 #endif
-    
     return 0;
 
 }
@@ -563,7 +465,7 @@ int main()
 #endif
 
     //
-    // run tests!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // run tests
     //
     UINT64 ops1 = 1;
 
@@ -620,8 +522,8 @@ int main()
             r[indx].nt = nt;
             r[indx].rt = rt;
 
-            cout << setw(6) << sharing << "%"; 			
-            cout << setw(4) << nt;				
+            cout << setw(6) << sharing << "%";
+            cout << setw(4) << nt;
             cout << setw(6) << fixed << setprecision(2) << (double) rt / 1000;
             cout << setw(16) << r[indx].ops;
             cout << setw(6) << fixed << setprecision(2) << (double) r[indx].ops / ops1;
@@ -658,23 +560,23 @@ int main()
     cout << "/aborts";
 #endif
     cout << endl;
-    //ofstream myfile;
-    //myfile.open ("bakery.csv");
+    ofstream myfile;
+    myfile.open ("atomIncr.csv");
     for (UINT i = 0; i < indx; i++) {
-	
 	//to csv code
-//	myfile << r[i].incs;
-//	myfile << ",";
-	//myfile << r[i].nt;
-//	myfile << std::endl;
+	myfile << r[i].incs;
+	myfile << ",";
+	myfile << r[i].nt;
+	myfile << std::endl;
         cout << r[i].sharing << "/"  << r[i].nt << "/" << r[i].rt << "/"  << r[i].ops << "/" << r[i].incs;
 #if OPTYP == 3
         cout << "/" << r[i].aborts;
 #endif
         cout << endl;
     }
+    myfile.close();
     cout << endl;
-  // myfile.close();
+
 #ifdef USEPMS
 
     //
@@ -740,4 +642,3 @@ int main()
 }
 
 // eof
-
