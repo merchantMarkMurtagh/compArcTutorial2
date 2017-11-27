@@ -74,7 +74,57 @@ using namespace std;                            // cout
 // 1:InterlockedIncrement
 // 2:InterlockedCompareExchange
 // 3:RTM (restricted transactional memory)
+// 4:Bakery
+// 5.Test and set
+// 6. MCS
+
+//Bakery
+#pragma region BakeryLock
+/* bakery lock */
+int number[16];
+int choosing[16];
+int p_id;
+#pragma endregion BakeryLock
+
+//Test and Sets
+#pragma region TestAndTestAndSet
+volatile long long lock = 0;
+#pragma endregion TestAndTestAndSet 
+
+
+#pragma region MCS
+
 //
+// derive from ALIGNEDMA for aligned memory allocation
+//
+class ALIGNEDMA {
+public:
+    void* operator new(size_t); // override new
+    void operator delete(void*); // override delete
+};
+
+//add
+void* ALIGNEDMA::operator new(size_t sz) { // aligned memory allocator
+sz = (sz + lineSz - 1) / lineSz * lineSz; // make sz a multiple of lineSz
+return _aligned_malloc(sz, lineSz); // allocate on a lineSz boundary
+}
+
+//delete
+void ALIGNEDMA::operator delete(void *p) {
+_aligned_free(p); // free object
+}
+
+class QNode : public ALIGNEDMA {
+public:
+volatile int waiting;
+volatile QNode *next;
+};
+
+QNode *MCLock = new QNode(); // at start of worker function
+DWORD tlsIndex = TlsAlloc(); // get a global tlsIndex that all threads can use
+
+#pragma endregion MCS
+
 
 #define OPTYP       0                           // set op type
 
@@ -120,17 +170,87 @@ using namespace std;                            // cout
                             InterlockedIncrement64((volatile LONG64*)g);                        \
                         }                                                                       \
                     }
+#elif OPTYP == 4
+
+#define OPSTR       "BakeryLock"
+#define INC(g)      aquire(p_ID);
+                    (*g)++;
+                    release_lock(p_ID);
+
+inline void aquire(int pid){
+
+    choosing[pid] = 1;
+     _mm_mfence(); 
+    int max = 0;           
+    for (int i = 0; i < 16; i++) {     
+        if(number[i] > max){
+           
+            max = number[i];    
+        }            
+    }                   
+    
+    number[pid] = max + 1;                                               
+    choosing[pid] = 0;  
+    _mm_mfence();                                             
+    for (int j = 0; j < 16; j++) {                                          
+        while (choosing[j]);                              
+        while (number[j] && ((number[j] < number[pid]) || ((number[j] == number[thread]) && (j < pid))));     
+    }                                                           
+
+}
+
+inline void release_lock(int pid){
+    number[pid]=0; 
+}
+
+#elif OPTYP == 5
+
+#ifdef COUNTER64
+#define OPSTR       "TesAndSetLock"
+#define INC(g)     while (InterlockedExchange(&lock, 1)) // try for lock
+                        while (lock == 1) // wait until lock free
+                            _mm_pause(); 
+                    (*g)++;
+                    lock = 0;
+#elif OPTYP == 6
+#define OPSTR       "MCS"
+#define INC(g)      aquire(&MClock);
+                    (*g)++;
+                    release(&MCLock);
+
+
+
+void acquire(QNode **lock) {
+    volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
+    qn->next = NULL;
+    volatile QNode *pred = (QNode*) InterlockedExchangePointer((PVOID*) lock, (PVOID) qn);
+    if (pred == NULL)
+        return; // have lock
+    qn->waiting = 1;
+    pred->next = qn;
+    while (qn->waiting);
+}
+
+void release(QNode **lock) {
+    volatile QNode *qn = (QNode*) TlsGetValue(tlsIndex);
+    volatile QNode *succ;
+    if (!(succ = qn->next)) {
+        if (InterlockedCompareExchangePointer((PVOID*)lock, NULL, (PVOID) qn) == qn)
+            return;
+        while ((succ = qn->next) == NULL); // changed from do … while()
+    }
+    succ->waiting = 0;
+}
+
+
 #endif
 
 UINT64 tstart;                                  // start of test in ms
 int sharing;                                    // % sharing
 int lineSz;                                     // cache line size
 int maxThread;                                  // max # of threads
-
-int number[16];				//for bakery
-int choosing[16];
 	
-
+int p_ID;
 THREADH *threadH;                               // thread handles
 UINT64 *ops;                                    // for ops per thread
 
@@ -245,7 +365,7 @@ WORKER worker(void *vthread)
     
     int thread = (int)((size_t) vthread);
     UINT64 n = 0;
-    choosing[thread] = 1; 			//bakery
+   	
     volatile VINT *gt = GINDX(thread);
     volatile VINT *gs = GINDX(maxThread);
 
@@ -257,21 +377,7 @@ WORKER worker(void *vthread)
 
     //runThreadOnCPU(thread % ncpu);
     
-    int max = 0;			//..
-    for (int i = 0; i < 16; i++) {      //...
-	if(number[i] > max){		//.... Bakery, assumes maxThread = 16
-		max = number[i];	//....
-	} 				//...
-    }					//..
-    
-    number[thread] = max + 1;												//..
-    choosing[thread] = 0;												//...
-    for (int j = 0; j < 16; j++) { 											//.... Bakery, assumes maxThread = 16
-	while (choosing[j]); // wait while thread j choosing								//....
-	while (number[j] && ((number[j] < number[thread]) || ((number[j] == number[thread]) && (j < thread))));		//...
-    }															//..
-    
-    while (1) {
+   while (1) {
 
         //
         // do some work
@@ -290,37 +396,27 @@ WORKER worker(void *vthread)
                 INC(gt);
                 INC(gt);
                 INC(gt);
-		_mm_mfence();
                 INC(gs);
                 break;
 
             case 50:
                 INC(gt);
-		_mm_mfence();
                 INC(gs);
                 INC(gt);
-		_mm_mfence();
                 INC(gs);
                 break;
 
             case 75:
                 INC(gt);
-		_mm_mfence();
                 INC(gs);
-		_mm_mfence();
                 INC(gs);
-		_mm_mfence();
                 INC(gs);
                 break;
 
             case 100:
-		_mm_mfence();
                 INC(gs);
-		_mm_mfence();
                 INC(gs);
-		_mm_mfence();
                 INC(gs);
-		_mm_mfence();
                 INC(gs);
 
             }
@@ -339,7 +435,7 @@ WORKER worker(void *vthread)
 #if OPTYP == 3
     aborts[thread] = nabort;
 #endif
-    number[thread]=0;	// Bakery
+    
     return 0;
 
 }
