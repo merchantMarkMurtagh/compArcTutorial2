@@ -41,7 +41,6 @@
 #include <iostream>                             // cout
 #include <iomanip>                              // setprecision
 #include "helper.h"                             //
-
 using namespace std;                            // cout
 
 #define K           1024                        //
@@ -92,46 +91,18 @@ volatile long long lock = 0;
 #pragma endregion TestAndTestAndSet 
 
 
-#pragma region MCS
-
 //
-// derive from ALIGNEDMA for aligned memory allocation
-//
-class ALIGNEDMA {
-public:
-    void* operator new(size_t); // override new
-    void operator delete(void*); // override delete
-};
-
-//add
-void* ALIGNEDMA::operator new(size_t sz) { // aligned memory allocator
-sz = (sz + lineSz - 1) / lineSz * lineSz; // make sz a multiple of lineSz
-return _aligned_malloc(sz, lineSz); // allocate on a lineSz boundary
-}
-
-//delete
-void ALIGNEDMA::operator delete(void *p) {
-_aligned_free(p); // free object
-}
-
-class QNode : public ALIGNEDMA {
-public:
-volatile int waiting;
-volatile QNode *next;
-};
-
-QNode *MCLock = new QNode(); // at start of worker function
-DWORD tlsIndex = TlsAlloc(); // get a global tlsIndex that all threads can use
-
-#pragma endregion MCS
 
 
-#define OPTYP       0                           // set op type
+#define OPTYP       4                          // set op type
+
+
 
 #if OPTYP == 0
 
 #define OPSTR       "inc"
 #define INC(g)      (*g)++;
+
 
 #elif OPTYP == 1
 
@@ -170,8 +141,8 @@ DWORD tlsIndex = TlsAlloc(); // get a global tlsIndex that all threads can use
                             InterlockedIncrement64((volatile LONG64*)g);                        \
                         }                                                                       \
                     }
-#elif OPTYP == 4
 
+#elif OPTYP == 4
 #define OPSTR       "BakeryLock"
 #define INC(g)      aquire(p_ID);
                     (*g)++;
@@ -194,14 +165,14 @@ inline void aquire(int pid){
     _mm_mfence();                                             
     for (int j = 0; j < 16; j++) {                                          
         while (choosing[j]);                              
-        while (number[j] && ((number[j] < number[pid]) || ((number[j] == number[thread]) && (j < pid))));     
+        while (number[j] && ((number[j] < number[pid]) || ((number[j] == number[pid]) && (j < pid))));     
     }                                                           
-
 }
 
 inline void release_lock(int pid){
     number[pid]=0; 
 }
+
 
 #elif OPTYP == 5
 
@@ -212,6 +183,7 @@ inline void release_lock(int pid){
                             _mm_pause(); 
                     (*g)++;
                     lock = 0;
+
 #elif OPTYP == 6
 #define OPSTR       "MCS"
 #define INC(g)      aquire(&MClock);
@@ -243,6 +215,7 @@ void release(QNode **lock) {
 }
 
 
+#endif
 #endif
 
 UINT64 tstart;                                  // start of test in ms
@@ -685,16 +658,15 @@ int main()
     cout << "/aborts";
 #endif
     cout << endl;
-    ofstream myfile;
-    myfile.open ("bakery.csv");
+    //ofstream myfile;
+    //myfile.open ("bakery.csv");
     for (UINT i = 0; i < indx; i++) {
 	
 	//to csv code
-	myfile << r[i].incs;
-	myfile << ",";
-	myfile << r[i].nt;
-	myfile << std::endl;
-        cout << r[i].sharing << "/"  << r[i].nt << "/" << r[i].rt << "/"  << r[i].ops << "/" << r[i].incs;
+//	myfile << r[i].incs;
+//	myfile << ",";
+	//myfile << r[i].nt;
+//	myfile << std::endl;
         cout << r[i].sharing << "/"  << r[i].nt << "/" << r[i].rt << "/"  << r[i].ops << "/" << r[i].incs;
 #if OPTYP == 3
         cout << "/" << r[i].aborts;
@@ -702,7 +674,7 @@ int main()
         cout << endl;
     }
     cout << endl;
-    myfile.close();
+  // myfile.close();
 #ifdef USEPMS
 
     //
